@@ -1,0 +1,3 @@
+-keep class com.titan.agent.data.** { *; }
+-dontwarn io.noties.**
+-keep class io.noties.** { *; }
