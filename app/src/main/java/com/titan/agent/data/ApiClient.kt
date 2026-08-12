@@ -17,7 +17,9 @@ class ApiClient(private var baseUrl: String) {
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        // Las tareas agenticas medidas tardan 87-148s, y cargar un modelo en VRAM
+        // puede anadir otro minuto antes del primer token. 120s se quedaba corto.
+        .readTimeout(300, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
     private val json = "application/json".toMediaType()
@@ -96,6 +98,7 @@ class ApiClient(private var baseUrl: String) {
                     val type = obj.get("type")?.asString ?: continue
                     val event: StreamEvent? = when (type) {
                         "text" -> StreamEvent.Text(obj.get("content").asString)
+                        "thinking" -> StreamEvent.Thinking(obj.get("content").asString)
                         "exec_start" -> StreamEvent.ExecStart(
                             obj.get("host").asString,
                             obj.get("command").asString

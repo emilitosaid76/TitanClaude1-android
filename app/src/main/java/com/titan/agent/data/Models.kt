@@ -26,6 +26,9 @@ data class OllamaModel(
 
 sealed class StreamEvent {
     data class Text(val content: String) : StreamEvent()
+    // Los modelos de razonamiento (gemma4) emiten su analisis aparte del contenido.
+    // Sin esto el usuario ve varios segundos de silencio mientras el modelo piensa.
+    data class Thinking(val content: String) : StreamEvent()
     data class ExecStart(val host: String, val command: String) : StreamEvent()
     data class ExecResult(val host: String, val command: String, val output: String) : StreamEvent()
     data class ExecError(val host: String, val error: String) : StreamEvent()

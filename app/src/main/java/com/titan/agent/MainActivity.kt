@@ -62,6 +62,7 @@ fun TitanApp(context: Context) {
     var metrics by remember { mutableStateOf(Metrics()) }
     var isStreaming by remember { mutableStateOf(false) }
     var execBlocks by remember { mutableStateOf(listOf<ExecBlock>()) }
+    var thinkingText by remember { mutableStateOf("") }
 
     val currentChat = chats.find { it.id == currentChatId }
 
@@ -138,6 +139,7 @@ fun TitanApp(context: Context) {
             metrics = metrics,
             isStreaming = isStreaming,
             execBlocks = execBlocks,
+            thinkingText = thinkingText,
             onSelectModel = { m ->
                 selectedModel = m
                 prefs.edit().putString("model", m).apply()
@@ -153,6 +155,7 @@ fun TitanApp(context: Context) {
 
                 isStreaming = true
                 execBlocks = emptyList()
+                thinkingText = ""
                 val startTime = System.currentTimeMillis()
                 var tokenCount = 0
                 var cmdCount = 0
@@ -181,7 +184,13 @@ fun TitanApp(context: Context) {
                                 }
                                 chats = chats.toList()
                             }
+                            is StreamEvent.Thinking -> {
+                                thinkingText += event.content
+                            }
                             is StreamEvent.ExecStart -> {
+                                // Al ejecutar una herramienta empieza una etapa nueva:
+                                // el razonamiento anterior ya no describe lo que pasa.
+                                thinkingText = ""
                                 cmdCount++
                                 execBlocks = execBlocks + ExecBlock(event.host, event.command)
                                 val elapsed = System.currentTimeMillis() - startTime
@@ -217,6 +226,7 @@ fun TitanApp(context: Context) {
                     }
                     isStreaming = false
                     execBlocks = emptyList()
+                    thinkingText = ""
                     saveChats()
                 }
             },

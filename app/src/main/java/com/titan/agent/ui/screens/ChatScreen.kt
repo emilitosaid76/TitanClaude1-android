@@ -46,6 +46,7 @@ fun ChatScreen(
     metrics: Metrics,
     isStreaming: Boolean,
     execBlocks: List<ExecBlock>,
+    thinkingText: String = "",
     onSelectModel: (String) -> Unit,
     onSendMessage: (String) -> Unit,
     onNewChat: () -> Unit,
@@ -148,7 +149,7 @@ fun ChatScreen(
                     }
                     // Thinking indicator
                     if (isStreaming) {
-                        item { ThinkingIndicator() }
+                        item { ThinkingIndicator(thinkingText) }
                     }
                 }
             }
@@ -532,20 +533,33 @@ private fun MiniMetric(label: String, value: String, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun ThinkingIndicator() {
+private fun ThinkingIndicator(thinkingText: String = "") {
     val infiniteTransition = rememberInfiniteTransition(label = "thinking")
-    Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        repeat(3) { i ->
-            val alpha by infiniteTransition.animateFloat(
-                initialValue = 0.3f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(600, delayMillis = i * 200),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "dot$i",
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            repeat(3) { i ->
+                val alpha by infiniteTransition.animateFloat(
+                    initialValue = 0.3f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(600, delayMillis = i * 200),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "dot$i",
+                )
+                Box(Modifier.size(6.dp).clip(CircleShape).background(Yellow.copy(alpha = alpha)))
+            }
+        }
+        // El razonamiento del modelo, atenuado: sin esto son segundos de silencio
+        // en los que el usuario no sabe si el agente esta trabajando o colgado.
+        if (thinkingText.isNotBlank()) {
+            Text(
+                text = thinkingText.takeLast(400),
+                color = Muted,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 6.dp),
             )
-            Box(Modifier.size(6.dp).clip(CircleShape).background(Yellow.copy(alpha = alpha)))
         }
     }
 }
