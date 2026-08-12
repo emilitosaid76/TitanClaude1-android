@@ -52,6 +52,29 @@ class ApiClient(private var baseUrl: String) {
         }
     }
 
+    /** Estado de la GPU del servidor. Devuelve null si no hay nvidia-smi o falla la conexion. */
+    suspend fun getGpu(): GpuStatus? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url("$baseUrl/api/gpu").build()
+            val resp = client.newCall(req).execute()
+            val body = resp.body?.string() ?: return@withContext null
+            val ok = resp.isSuccessful
+            resp.close()
+            if (!ok) return@withContext null
+            val o = JsonParser.parseString(body).asJsonObject
+            if (o.has("error")) return@withContext null
+            GpuStatus(
+                name = o.get("name")?.asString ?: "GPU",
+                load = o.get("gpuLoad")?.asInt ?: 0,
+                vramUsed = o.get("vramUsed")?.asInt ?: 0,
+                vramTotal = o.get("vramTotal")?.asInt ?: 0,
+                temp = o.get("temp")?.asInt ?: 0,
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** Reinicia el servicio Ollama en el servidor. Devuelve null si fue bien, o el error. */
     suspend fun restartOllama(): String? = withContext(Dispatchers.IO) {
         try {

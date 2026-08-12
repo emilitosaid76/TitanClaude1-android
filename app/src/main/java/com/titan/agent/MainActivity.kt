@@ -68,6 +68,17 @@ fun TitanApp(context: Context) {
     var execBlocks by remember { mutableStateOf(listOf<ExecBlock>()) }
     var thinkingText by remember { mutableStateOf("") }
     var attachedFiles by remember { mutableStateOf(listOf<AttachedFile>()) }
+    var gpu by remember { mutableStateOf<GpuStatus?>(null) }
+
+    // Refresco del estado de GPU mientras haya conexion. Se detiene al desconectar
+    // para no consultar un servidor que ya no esta.
+    LaunchedEffect(connected) {
+        while (connected) {
+            gpu = apiClient.getGpu()
+            kotlinx.coroutines.delay(5000)
+        }
+        gpu = null
+    }
 
     // Selector de documentos del sistema: no requiere permisos de almacenamiento,
     // el usuario concede acceso solo a lo que elige.
@@ -164,8 +175,18 @@ fun TitanApp(context: Context) {
             isStreaming = isStreaming,
             execBlocks = execBlocks,
             thinkingText = thinkingText,
+            gpu = gpu,
             attachedFiles = attachedFiles,
-            onPickFiles = { pickFiles.launch(arrayOf("*/*")) },
+            // Con "*/*" el selector de MIUI abre una vista reducida sin barra
+            // superior, y el usuario se queda sin boton para salir. Declarando
+            // tipos concretos abre el selector completo, con su navegacion.
+            onPickFiles = {
+                pickFiles.launch(arrayOf(
+                    "text/*", "application/json", "application/xml", "application/pdf",
+                    "application/javascript", "application/x-yaml", "application/octet-stream",
+                    "image/*",
+                ))
+            },
             onRemoveAttachment = { f -> attachedFiles = attachedFiles - f },
             onRestartOllama = {
                 scope.launch {

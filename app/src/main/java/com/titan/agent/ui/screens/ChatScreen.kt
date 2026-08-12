@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +48,7 @@ fun ChatScreen(
     isStreaming: Boolean,
     execBlocks: List<ExecBlock>,
     thinkingText: String = "",
+    gpu: GpuStatus? = null,
     attachedFiles: List<AttachedFile> = emptyList(),
     onPickFiles: () -> Unit = {},
     onRemoveAttachment: (AttachedFile) -> Unit = {},
@@ -105,6 +107,7 @@ fun ChatScreen(
                 selectedModel = selectedModel,
                 sshConnections = sshConnections,
                 metrics = metrics,
+                gpu = gpu,
                 onSelectModel = onSelectModel,
                 onNewChat = onNewChat,
                 onSelectChat = { onSelectChat(it); drawerOpen = false },
@@ -270,6 +273,7 @@ private fun SidePanel(
     selectedModel: String,
     sshConnections: List<SshConnection>,
     metrics: Metrics,
+    gpu: GpuStatus?,
     onSelectModel: (String) -> Unit,
     onNewChat: () -> Unit,
     onSelectChat: (Chat) -> Unit,
@@ -346,23 +350,24 @@ private fun SidePanel(
 
         Divider(color = Border)
 
-        // Metrics
-        if (metrics.tokens > 0) {
-            Column(Modifier.padding(12.dp)) {
-                Text("ULTIMA EJECUCION", fontSize = 11.sp, color = Yellow, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MiniMetric("Tiempo", formatTime(metrics.elapsedMs), Modifier.weight(1f))
-                    MiniMetric("Tokens", "${metrics.tokens}", Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MiniMetric("Velocidad", "%.1f t/s".format(metrics.speed), Modifier.weight(1f))
-                    MiniMetric("Comandos", "${metrics.execCount}", Modifier.weight(1f))
-                }
+        // Metricas de la ultima ejecucion. La seccion ya no se oculta sin datos:
+        // se muestra en cero, para que no parezca que ha desaparecido.
+        CollapsibleSection(
+            title = "ULTIMA EJECUCION",
+            prefsKey = "sec_metrics",
+            trailing = if (metrics.tokens > 0) "${metrics.tokens} tok" else null,
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MiniMetric("Tiempo", formatTime(metrics.elapsedMs), Modifier.weight(1f))
+                MiniMetric("Tokens", "${metrics.tokens}", Modifier.weight(1f))
             }
-            Divider(color = Border)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MiniMetric("Velocidad", "%.1f t/s".format(metrics.speed), Modifier.weight(1f))
+                MiniMetric("Comandos", "${metrics.execCount}", Modifier.weight(1f))
+            }
         }
+        Divider(color = Border)
 
         // SSH
         Column(Modifier.padding(12.dp)) {
@@ -392,6 +397,32 @@ private fun SidePanel(
         }
 
         Divider(color = Border)
+
+        // Estado de la GPU del servidor
+        gpu?.let { g ->
+            CollapsibleSection(
+                title = "GPU",
+                prefsKey = "sec_gpu",
+                trailing = "${g.vramPercent}%",
+            ) {
+                Text(g.name, fontSize = 12.sp, color = TextPrimary, maxLines = 1)
+                Spacer(Modifier.height(6.dp))
+                // La barra hace evidente de un vistazo si el modelo cabe o esta desbordando
+                LinearProgressIndicator(
+                    progress = g.vramPercent / 100f,
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = if (g.vramPercent > 90) Danger else if (g.vramPercent > 75) Warn else Ok,
+                    trackColor = Card2,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "VRAM %.1f / %.1f GB (%d%%)".format(g.vramUsedGb, g.vramTotalGb, g.vramPercent),
+                    fontSize = 11.sp, color = Muted,
+                )
+                Text("Carga ${g.load}%   ·   ${g.temp}°C", fontSize = 11.sp, color = Muted)
+            }
+            Divider(color = Border)
+        }
 
         // Model selector
         Column(Modifier.padding(12.dp)) {
@@ -574,6 +605,50 @@ private fun MetricChip(text: String, color: Color) {
             .padding(horizontal = 8.dp, vertical = 3.dp),
     ) {
         Text(text, fontSize = 11.sp, color = color, fontWeight = FontWeight.SemiBold, fontFamily = Mono)
+    }
+}
+
+/**
+ * Seccion del panel lateral que se puede plegar tocando su titulo.
+ * El titulo permanece siempre visible: antes la seccion de metricas desaparecia
+ * entera cuando no habia datos y parecia que se hubiera perdido.
+ */
+@Composable
+private fun CollapsibleSection(
+    title: String,
+    prefsKey: String,
+    trailing: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    // rememberSaveable para que el plegado sobreviva a girar la pantalla
+    var expanded by rememberSaveable(prefsKey) { mutableStateOf(true) }
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                title,
+                fontSize = 11.sp,
+                color = Yellow,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.weight(1f),
+            )
+            // Resumen visible aun con la seccion plegada
+            if (trailing != null && !expanded) {
+                Text(trailing, fontSize = 11.sp, color = Muted, modifier = Modifier.padding(end = 6.dp))
+            }
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                if (expanded) "Ocultar" else "Mostrar",
+                tint = Muted,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(Modifier.padding(top = 8.dp)) { content() }
+        }
     }
 }
 

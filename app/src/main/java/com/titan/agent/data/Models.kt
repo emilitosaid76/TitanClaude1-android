@@ -24,6 +24,19 @@ data class OllamaModel(
     val name: String,
 )
 
+/** Estado de la GPU del servidor, tal como lo reporta nvidia-smi. */
+data class GpuStatus(
+    val name: String,
+    val load: Int,
+    val vramUsed: Int,
+    val vramTotal: Int,
+    val temp: Int,
+) {
+    val vramPercent: Int get() = if (vramTotal > 0) vramUsed * 100 / vramTotal else 0
+    val vramUsedGb: Double get() = vramUsed / 1024.0
+    val vramTotalGb: Double get() = vramTotal / 1024.0
+}
+
 /** Archivo adjuntado al mensaje. Su contenido se inyecta en el texto que ve el modelo. */
 data class AttachedFile(
     val name: String,
