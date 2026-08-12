@@ -24,6 +24,13 @@ data class OllamaModel(
     val name: String,
 )
 
+/** Archivo adjuntado al mensaje. Su contenido se inyecta en el texto que ve el modelo. */
+data class AttachedFile(
+    val name: String,
+    val content: String,
+    val isImage: Boolean = false,
+)
+
 sealed class StreamEvent {
     data class Text(val content: String) : StreamEvent()
     // Los modelos de razonamiento (gemma4) emiten su analisis aparte del contenido.

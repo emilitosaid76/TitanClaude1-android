@@ -47,6 +47,10 @@ fun ChatScreen(
     isStreaming: Boolean,
     execBlocks: List<ExecBlock>,
     thinkingText: String = "",
+    attachedFiles: List<AttachedFile> = emptyList(),
+    onPickFiles: () -> Unit = {},
+    onRemoveAttachment: (AttachedFile) -> Unit = {},
+    onRestartOllama: () -> Unit = {},
     onSelectModel: (String) -> Unit,
     onSendMessage: (String) -> Unit,
     onNewChat: () -> Unit,
@@ -59,6 +63,25 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     var showSshDialog by remember { mutableStateOf(false) }
     var drawerOpen by remember { mutableStateOf(false) }
+    var showRestartConfirm by remember { mutableStateOf(false) }
+
+    // Reiniciar Ollama corta el modelo cargado: conviene confirmarlo.
+    if (showRestartConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestartConfirm = false },
+            containerColor = Card,
+            title = { Text("Reiniciar Ollama", color = TextPrimary) },
+            text = { Text("Se cortara cualquier respuesta en curso y el modelo tendra que cargarse de nuevo.", color = Muted) },
+            confirmButton = {
+                TextButton(onClick = { showRestartConfirm = false; onRestartOllama() }) {
+                    Text("Reiniciar", color = Yellow)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestartConfirm = false }) { Text("Cancelar", color = Muted) }
+            },
+        )
+    }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -102,6 +125,12 @@ fun ChatScreen(
                 ) {
                     IconButton(onClick = { drawerOpen = !drawerOpen }) {
                         Icon(Icons.Default.Menu, "Menu", tint = Yellow)
+                    }
+                    IconButton(
+                        onClick = { showRestartConfirm = true },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(Icons.Default.Refresh, "Reiniciar Ollama", tint = Muted, modifier = Modifier.size(20.dp))
                     }
                     Text(
                         currentChat?.title ?: "TITAN AGENT",
@@ -156,10 +185,39 @@ fun ChatScreen(
 
             // Input bar
             Surface(color = Card, tonalElevation = 0.dp) {
+              Column(Modifier.fillMaxWidth()) {
+                // Adjuntos pendientes de enviar
+                if (attachedFiles.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        attachedFiles.forEach { f ->
+                            AssistChip(
+                                onClick = { onRemoveAttachment(f) },
+                                label = { Text(f.name.take(24), fontSize = 12.sp) },
+                                trailingIcon = { Icon(Icons.Default.Close, "Quitar", Modifier.size(16.dp)) },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = Card2,
+                                    labelColor = TextPrimary,
+                                    trailingIconContentColor = Muted,
+                                ),
+                            )
+                        }
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
+                    IconButton(
+                        onClick = onPickFiles,
+                        modifier = Modifier.size(48.dp),
+                    ) {
+                        Icon(Icons.Default.AttachFile, "Adjuntar archivos", tint = Muted)
+                    }
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
@@ -174,7 +232,7 @@ fun ChatScreen(
                         maxLines = 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
-                            if (inputText.isNotBlank() && !isStreaming) {
+                            if ((inputText.isNotBlank() || attachedFiles.isNotEmpty()) && !isStreaming) {
                                 onSendMessage(inputText.trim())
                                 inputText = ""
                             }
@@ -183,7 +241,8 @@ fun ChatScreen(
                     Spacer(Modifier.width(8.dp))
                     FloatingActionButton(
                         onClick = {
-                            if (inputText.isNotBlank() && !isStreaming) {
+                            // Con adjuntos se puede enviar sin escribir nada
+                            if ((inputText.isNotBlank() || attachedFiles.isNotEmpty()) && !isStreaming) {
                                 onSendMessage(inputText.trim())
                                 inputText = ""
                             }
@@ -196,6 +255,7 @@ fun ChatScreen(
                         Icon(Icons.Default.Send, "Enviar")
                     }
                 }
+              }
             }
         }
     }

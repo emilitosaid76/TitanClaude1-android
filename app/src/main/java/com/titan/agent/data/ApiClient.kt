@@ -52,6 +52,24 @@ class ApiClient(private var baseUrl: String) {
         }
     }
 
+    /** Reinicia el servicio Ollama en el servidor. Devuelve null si fue bien, o el error. */
+    suspend fun restartOllama(): String? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/ollama/restart")
+                .post(ByteArray(0).toRequestBody(json))
+                .build()
+            val resp = client.newCall(req).execute()
+            val body = resp.body?.string() ?: ""
+            resp.close()
+            val obj = JsonParser.parseString(body).asJsonObject
+            if (obj.get("ok")?.asBoolean == true) null
+            else obj.get("error")?.asString ?: "Error desconocido"
+        } catch (e: Exception) {
+            e.localizedMessage ?: "Error de conexion"
+        }
+    }
+
     suspend fun syncSshConnections(connections: List<SshConnection>) = withContext(Dispatchers.IO) {
         try {
             val payload = gson.toJson(mapOf("connections" to connections))

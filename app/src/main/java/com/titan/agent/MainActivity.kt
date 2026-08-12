@@ -1,9 +1,13 @@
 package com.titan.agent
 
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -63,6 +67,26 @@ fun TitanApp(context: Context) {
     var isStreaming by remember { mutableStateOf(false) }
     var execBlocks by remember { mutableStateOf(listOf<ExecBlock>()) }
     var thinkingText by remember { mutableStateOf("") }
+    var attachedFiles by remember { mutableStateOf(listOf<AttachedFile>()) }
+
+    // Selector de documentos del sistema: no requiere permisos de almacenamiento,
+    // el usuario concede acceso solo a lo que elige.
+    val pickFiles = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        val leidos = mutableListOf<AttachedFile>()
+        val errores = mutableListOf<String>()
+        uris.forEach { uri ->
+            FileReader.read(context, uri)
+                .onSuccess { leidos.add(it) }
+                .onFailure { errores.add(it.message ?: "archivo ilegible") }
+        }
+        if (leidos.isNotEmpty()) attachedFiles = attachedFiles + leidos
+        // Un archivo rechazado en silencio parece un fallo de la app: hay que decirlo.
+        if (errores.isNotEmpty()) {
+            Toast.makeText(context, errores.joinToString("\n"), Toast.LENGTH_LONG).show()
+        }
+    }
 
     val currentChat = chats.find { it.id == currentChatId }
 
@@ -140,15 +164,32 @@ fun TitanApp(context: Context) {
             isStreaming = isStreaming,
             execBlocks = execBlocks,
             thinkingText = thinkingText,
+            attachedFiles = attachedFiles,
+            onPickFiles = { pickFiles.launch(arrayOf("*/*")) },
+            onRemoveAttachment = { f -> attachedFiles = attachedFiles - f },
+            onRestartOllama = {
+                scope.launch {
+                    val error = apiClient.restartOllama()
+                    Toast.makeText(
+                        context,
+                        error?.let { "Error: $it" } ?: "Ollama reiniciado",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            },
             onSelectModel = { m ->
                 selectedModel = m
                 prefs.edit().putString("model", m).apply()
             },
             onSendMessage = { text ->
                 val chat = chats.find { it.id == currentChatId } ?: return@ChatScreen
-                chat.messages.add(ChatMessage("user", text))
+                // El contenido de los adjuntos viaja dentro del mensaje, igual que en la web
+                val fullContent = FileReader.buildContent(text, attachedFiles)
+                val titulo = if (text.isNotBlank()) text else attachedFiles.joinToString(", ") { it.name }
+                attachedFiles = emptyList()
+                chat.messages.add(ChatMessage("user", fullContent))
                 if (chat.messages.size == 1) {
-                    chat.title = text.take(40) + if (text.length > 40) "..." else ""
+                    chat.title = titulo.take(40) + if (titulo.length > 40) "..." else ""
                 }
                 chats = chats.toList() // trigger recompose
                 saveChats()
